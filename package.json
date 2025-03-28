@@ -1,0 +1,42 @@
+{
+  "name": "gitbolt",
+  "displayName": "gitbolt",
+  "description": "an autoamatic handler for git commands using ai",
+  "version": "0.0.1",
+  "type": "commonjs",
+  "publisher": "aditya",
+  "engines": {
+    "vscode": "^1.98.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitbolt.login",
+        "title": "gitBolt: Login"
+      }
+    ]
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.98.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.23.0"
+  },
+  "dependencies": {
+    "@octokit/core": "^6.1.4",
+    "@octokit/rest": "^21.1.1",
+    "axios": "^1.8.4"
+  }
+}
