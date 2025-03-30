@@ -18,6 +18,22 @@
       {
         "command": "gitbolt.login",
         "title": "gitBolt: Login"
+      },
+      {
+        "command": "gitbolt.listRepos",
+        "title": "gitBolt: List Repositories"
+      },
+      {
+        "command": "gitbolt.getDirectory",
+        "title": "gitBolt: Get Directory"
+      },
+      {
+        "command": "gitbolt.initRepo",
+        "title": "gitBolt: Initialize Repository"
+      },
+      {
+        "command": "gitbolt.addBranch",
+        "title": "gitBolt: Add Branch"
       }
     ]
   },
@@ -37,6 +53,8 @@
   "dependencies": {
     "@octokit/core": "^6.1.4",
     "@octokit/rest": "^21.1.1",
-    "axios": "^1.8.4"
+    "axios": "^1.8.4",
+    "path": "^0.12.7",
+    "simple-git": "^3.27.0"
   }
 }
