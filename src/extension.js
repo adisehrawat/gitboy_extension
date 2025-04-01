@@ -1,11 +1,12 @@
 const vscode = require("vscode");
-const { authenticate,handleUri,listRepositories,initRepo,addBranch,initRepoWithBranches,getDirectory,getGitHubUsername } = require("./gitBoltCommands/commands");
+const { authenticate,handleUri,listRepositories,initRepo,addBranch,getDirectory,getGitHubUsername,initializeOctokit } = require("./gitBoltCommands/commands");
 
 
 
 
 // Extension activation
-function activate(context) {
+async function activate(context) {
+    await initializeOctokit(context);
   context.subscriptions.push(
     vscode.commands.registerCommand("gitbolt.login", authenticate)
   );
@@ -25,9 +26,6 @@ function activate(context) {
   );
   context.subscriptions.push(
     vscode.commands.registerCommand("gitbolt.addBranch", addBranch)
-  );
-  context.subscriptions.push(
-    vscode.commands.registerCommand("gitbolt.initRepoWithBranches", initRepoWithBranches)
   );
   context.subscriptions.push(
     vscode.commands.registerCommand("gitbolt.getusername", getGitHubUsername)

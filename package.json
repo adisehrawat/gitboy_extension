@@ -36,10 +36,6 @@
         "title": "gitBolt: Add Branch"
       },
       {
-        "command": "gitbolt.initRepoWithBranches",
-        "title": "gitBolt: Initialize Repository with Branches"
-      },
-      {
         "command": "gitbolt.getusername",
         "title": "gitBolt: Get Github Username"
       }

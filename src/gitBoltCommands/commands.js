@@ -4,7 +4,6 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 
-
 async function loadSimpleGit() {
   const { default: simpleGit } = await import("simple-git");
   return simpleGit;
@@ -84,6 +83,26 @@ async function handleUri(uri) {
     );
   } catch (error) {
     vscode.window.showErrorMessage(`Authentication error: ${error.message}`);
+  }
+}
+
+// Load access token from secrets storage and initialize Octokit
+/**
+ * @param {{ secrets: { get: (arg0: string) => any; }; }} context
+ */
+async function initializeOctokit(context) {
+  const accessToken = await context.secrets.get("gitboltAccessToken");
+  if (accessToken) {
+    octokit = new Octokit1({
+      auth: accessToken,
+    });
+    vscode.window.showInformationMessage(
+      "Authenticated with stored access token."
+    );
+  } else {
+    vscode.window.showInformationMessage(
+      "No stored access token found, please authenticate."
+    );
   }
 }
 
@@ -213,7 +232,7 @@ async function initRepo() {
     const repoName = await vscode.window.showInputBox({
       prompt: "Enter a name for your GitHub repository",
       placeHolder: "my-repo",
-      value: "DailyWork" // Default value
+      value: "DailyWork", // Default value
     });
 
     if (!repoName) {
@@ -225,17 +244,21 @@ async function initRepo() {
       // Check if repo exists
       await octokit.repos.get({
         owner: gitHubUsername,
-        repo: repoName
+        repo: repoName,
       });
-      vscode.window.showInformationMessage(`Repository ${repoName} already exists.`);
+      vscode.window.showInformationMessage(
+        `Repository ${repoName} already exists.`
+      );
     } catch (error) {
       // Create repo if it doesn't exist
       if (error.status === 404) {
         await octokit.repos.createForAuthenticatedUser({
           name: repoName,
-          auto_init: false
+          auto_init: false,
         });
-        vscode.window.showInformationMessage(`Repository ${repoName} created on GitHub.`);
+        vscode.window.showInformationMessage(
+          `Repository ${repoName} created on GitHub.`
+        );
       } else {
         throw error;
       }
@@ -264,7 +287,7 @@ async function initRepo() {
     vscode.window.showInformationMessage(
       "✅ Repository initialized and pushed to GitHub."
     );
-    
+
     return repoName;
   } catch (error) {
     vscode.window.showErrorMessage(
@@ -289,7 +312,7 @@ async function addBranch() {
     canSelectFiles: false,
     canSelectFolders: true,
     canSelectMany: false,
-    openLabel: "Select Folder to Create Branch"
+    openLabel: "Select Folder to Create Branch",
   });
 
   if (!folderPath || folderPath.length === 0) {
@@ -299,15 +322,15 @@ async function addBranch() {
 
   const selectedFolderPath = folderPath[0].fsPath;
   const folderName = path.basename(selectedFolderPath);
-  
+
   // Sanitize branch name
   const branchName = sanitizeBranchName(folderName);
-  
+
   // Get repository name
   const repoName = await vscode.window.showInputBox({
     prompt: "Enter the name of your GitHub repository",
     placeHolder: "my-repo",
-    value: "DailyWork" // Default value
+    value: "DailyWork", // Default value
   });
 
   if (!repoName) {
@@ -317,27 +340,27 @@ async function addBranch() {
 
   try {
     const simpleGit = await loadSimpleGit();
-    
+
     // Create a temporary directory for this operation
     const tempDir = path.join(os.tmpdir(), `git_branch_${Date.now()}`);
     await fs.promises.mkdir(tempDir, { recursive: true });
-    
+
     const git = simpleGit(tempDir);
-    
+
     // Clone repository
     const repoUrl = `https://github.com/${gitHubUsername}/${repoName}.git`;
     await git.clone(repoUrl, tempDir);
-    
+
     // Create a new branch
     await git.checkoutLocalBranch(branchName);
-    
+
     // Remove all files from the branch
     const files = await fs.promises.readdir(tempDir);
     for (const file of files) {
-      if (file !== '.git') {
+      if (file !== ".git") {
         const filePath = path.join(tempDir, file);
         const stat = await fs.promises.stat(filePath);
-        
+
         if (stat.isDirectory()) {
           await fs.promises.rm(filePath, { recursive: true, force: true });
         } else {
@@ -345,20 +368,20 @@ async function addBranch() {
         }
       }
     }
-    
+
     // Copy selected folder contents to the temp directory
     await copyFolderRecursive(selectedFolderPath, tempDir);
-    
+
     // Add and commit changes
     await git.add(".");
     await git.commit(`Initial commit for branch: ${branchName}`);
-    
+
     // Push the branch to remote
     await git.push(["-u", "origin", branchName]);
-    
+
     // Clean up temp directory
     await fs.promises.rm(tempDir, { recursive: true, force: true });
-    
+
     vscode.window.showInformationMessage(
       `🌳 Branch '${branchName}' created from folder '${folderName}' and pushed to '${repoName}' repository.`
     );
@@ -371,11 +394,11 @@ async function addBranch() {
 
 async function copyFolderRecursive(src, dest) {
   const entries = await fs.promises.readdir(src, { withFileTypes: true });
-  
+
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
-    
+
     if (entry.isDirectory()) {
       await fs.promises.mkdir(destPath, { recursive: true });
       await copyFolderRecursive(srcPath, destPath);
@@ -385,47 +408,6 @@ async function copyFolderRecursive(src, dest) {
   }
 }
 
-async function initRepoWithBranches() {
-  // First authenticate if not already authenticated
-  if (!octokit) {
-    vscode.window.showInformationMessage("Please authenticate with GitHub first.");
-    await authenticate();
-    return;
-  }
-  
-  // Initialize the repository
-  const repoName = await initRepo();
-  
-  if (!repoName) {
-    vscode.window.showErrorMessage("Failed to initialize repository.");
-    return;
-  }
-  
-  // Ask user if they want to add branches now
-  const addBranchesNow = await vscode.window.showQuickPick(['Yes', 'No'], {
-    placeHolder: 'Do you want to add branches now?'
-  });
-  
-  if (addBranchesNow === 'Yes') {
-    // Show folder selection dialog for each branch
-    const folderCount = await vscode.window.showInputBox({
-      prompt: "How many folders/branches do you want to add?",
-      placeHolder: "Enter a number",
-      value: "3"
-    });
-    
-    const count = parseInt(folderCount || "0", 10);
-    
-    if (count > 0) {
-      vscode.window.showInformationMessage(`Select ${count} folders to add as branches.`);
-      
-      for (let i = 0; i < count; i++) {
-        vscode.window.showInformationMessage(`Select folder ${i + 1} of ${count}`);
-        await addBranch();
-      }
-    }
-  }
-}
 
 // Helper function to sanitize branch name
 function sanitizeBranchName(branchName) {
@@ -435,12 +417,12 @@ function sanitizeBranchName(branchName) {
 }
 
 module.exports = {
-    authenticate,
-    handleUri,
-    listRepositories,
-    getDirectory,
-    initRepo,
-    addBranch,
-    initRepoWithBranches,
-    getGitHubUsername,
-}
+  authenticate,
+  handleUri,
+  listRepositories,
+  getDirectory,
+  initRepo,
+  addBranch,
+  getGitHubUsername,
+  initializeOctokit,
+};
