@@ -159,6 +159,7 @@ async function getGitHubUsername() {
   try {
     const { data: user } = await octokit.users.getAuthenticated();
     gitHubUsername = user.login;
+    vscode.window.showInformationMessage(`Authenticated as ${gitHubUsername}`);
     return gitHubUsername;
   } catch (error) {
     vscode.window.showErrorMessage(
@@ -433,41 +434,13 @@ function sanitizeBranchName(branchName) {
     .replace(/^-+|-+$/g, ""); // Remove trailing dashes
 }
 
-
-
-// Extension activation
-function activate(context) {
-  context.subscriptions.push(
-    vscode.commands.registerCommand("gitbolt.login", authenticate)
-  );
-  context.subscriptions.push(
-    vscode.commands.registerCommand("gitbolt.listRepos", listRepositories)
-  );
-  context.subscriptions.push(
-    vscode.window.registerUriHandler({
-      handleUri,
-    })
-  );
-  context.subscriptions.push(
-    vscode.commands.registerCommand("gitbolt.getDirectory", getDirectory)
-  );
-  context.subscriptions.push(
-    vscode.commands.registerCommand("gitbolt.initRepo", initRepo)
-  );
-  context.subscriptions.push(
-    vscode.commands.registerCommand("gitbolt.addBranch", addBranch)
-  );
-  context.subscriptions.push(
-    vscode.commands.registerCommand("gitbolt.initRepoWithBranches", initRepoWithBranches)
-  );
-
-  vscode.window.showInformationMessage("GitBolt extension activated!");
-}
-
-// Extension deactivation
-function deactivate() {}
-
 module.exports = {
-  activate,
-  deactivate,
-};
+    authenticate,
+    handleUri,
+    listRepositories,
+    getDirectory,
+    initRepo,
+    addBranch,
+    initRepoWithBranches,
+    getGitHubUsername,
+}
