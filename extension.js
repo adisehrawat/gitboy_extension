@@ -1,6 +1,9 @@
 const vscode = require("vscode");
 const axios = require("axios");
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
+
 
 async function loadSimpleGit() {
   const { default: simpleGit } = await import("simple-git");
@@ -156,152 +159,281 @@ async function getGitHubUsername() {
   try {
     const { data: user } = await octokit.users.getAuthenticated();
     gitHubUsername = user.login;
-
-    vscode.window.showInformationMessage(`Authenticated as: ${gitHubUsername}`);
+    return gitHubUsername;
   } catch (error) {
     vscode.window.showErrorMessage(
-      `❌ Error fetching GitHub username: ${error.message}`
+      `Error fetching GitHub username: ${error.message}`
     );
+    return null;
   }
 }
 
 async function initRepo() {
-    const workspaceFolder = vscode.workspace.workspaceFolders
-      ? vscode.workspace.workspaceFolders[0].uri.fsPath
-      : null;
-  
-    if (!workspaceFolder) {
-      vscode.window.showErrorMessage("No folder is opened in the workspace.");
-      return;
-    }
-  
-    const simpleGit = await loadSimpleGit();
-    const git = simpleGit(workspaceFolder);
-  
-    try {
-      // Check if the folder is already a git repo
-      const isRepo = await git.checkIsRepo();
-      if (!isRepo) {
-        await git.init();
-        vscode.window.showInformationMessage("✅ Git repository initialized.");
-      } else {
-        vscode.window.showInformationMessage("⚡ Git repository already exists.");
-      }
-  
-      // Check if 'main' branch exists and switch to it if it does
-      const branchSummary = await git.branchLocal();
-      if (branchSummary.all.includes("main")) {
-        await git.checkout("main");
-      } else {
-        await git.checkoutLocalBranch("main");
-      }
-  
-      // Add and commit all files
-      await git.add(".");
-      await git.commit("Initial commit");
-  
-      // Get GitHub username dynamically
-      if (!gitHubUsername) {
-        await getGitHubUsername(); // Fetch username if not already set
-      }
-  
-      // Set remote URL with authenticated username
-      const repoUrl = `https://github.com/${gitHubUsername}/DailyWork.git`;
-  
-      // Check if 'origin' remote exists
-      const remotes = await git.getRemotes();
-      if (!remotes.find((r) => r.name === "origin")) {
-        await git.remote(["add", "origin", repoUrl]);
-        vscode.window.showInformationMessage(`✅ Remote 'origin' added: ${repoUrl}`);
-      } else {
-        await git.remote(["set-url", "origin", repoUrl]);
-        vscode.window.showInformationMessage(`🔄 Remote URL updated to: ${repoUrl}`);
-      }
-  
-      // Push to remote
-      await git.push(["-u", "origin", "main"]);
-  
-      vscode.window.showInformationMessage(
-        "✅ Repository initialized and pushed to GitHub."
-      );
-    } catch (error) {
-      vscode.window.showErrorMessage(`❌ Error initializing repository: ${error.message}`);
-    }
+  const workspaceFolder = vscode.workspace.workspaceFolders
+    ? vscode.workspace.workspaceFolders[0].uri.fsPath
+    : null;
+
+  if (!workspaceFolder) {
+    vscode.window.showErrorMessage("No folder is opened in the workspace.");
+    return;
   }
-  
-  
-  
 
-async function addBranch() {
-    const workspaceFolder = vscode.workspace.workspaceFolders
-      ? vscode.workspace.workspaceFolders[0].uri.fsPath
-      : null;
-  
-    if (!workspaceFolder) {
-      vscode.window.showErrorMessage("No folder is opened in the workspace.");
+  const simpleGit = await loadSimpleGit();
+  const git = simpleGit(workspaceFolder);
+
+  try {
+    // Check if the folder is already a git repo
+    const isRepo = await git.checkIsRepo();
+    if (!isRepo) {
+      await git.init();
+      vscode.window.showInformationMessage("✅ Git repository initialized.");
+    } else {
+      vscode.window.showInformationMessage("⚡ Git repository already exists.");
+    }
+
+    // Check if 'main' branch exists and switch to it if it does
+    const branchSummary = await git.branchLocal();
+    if (branchSummary.all.includes("main")) {
+      await git.checkout("main");
+    } else {
+      await git.checkoutLocalBranch("main");
+    }
+
+    // Add all files in the workspace folder
+    await git.add(".");
+    await git.commit("Initial commit");
+
+    // Get GitHub username dynamically
+    if (!gitHubUsername) {
+      await getGitHubUsername(); // Fetch username if not already set
+    }
+
+    // Create repository on GitHub if it doesn't exist
+    const repoName = await vscode.window.showInputBox({
+      prompt: "Enter a name for your GitHub repository",
+      placeHolder: "my-repo",
+      value: "DailyWork" // Default value
+    });
+
+    if (!repoName) {
+      vscode.window.showErrorMessage("Repository creation cancelled.");
       return;
     }
-  
-    const simpleGit = await loadSimpleGit();
-    const git = simpleGit(workspaceFolder);
-  
-    try {
-      let branchName = await getDirectory();
-      if (!branchName) {
-        return;
-      }
-  
-      // Sanitize the branch name
-      branchName = sanitizeBranchName(branchName);
-      if (!branchName) {
-        vscode.window.showErrorMessage("Invalid branch name after sanitization.");
-        return;
-      }
-      
-      const remotes = await git.getRemotes();
-    if (!remotes.find((r) => r.name === "origin")) {
-      if (!gitHubUsername) {
-        await getGitHubUsername(); // Fetch username if not already set
-      }
-      const repoUrl = `https://github.com/${gitHubUsername}/DailyWork.git`;
 
+    try {
+      // Check if repo exists
+      await octokit.repos.get({
+        owner: gitHubUsername,
+        repo: repoName
+      });
+      vscode.window.showInformationMessage(`Repository ${repoName} already exists.`);
+    } catch (error) {
+      // Create repo if it doesn't exist
+      if (error.status === 404) {
+        await octokit.repos.createForAuthenticatedUser({
+          name: repoName,
+          auto_init: false
+        });
+        vscode.window.showInformationMessage(`Repository ${repoName} created on GitHub.`);
+      } else {
+        throw error;
+      }
+    }
+
+    // Set remote URL with authenticated username
+    const repoUrl = `https://github.com/${gitHubUsername}/${repoName}.git`;
+
+    // Check if 'origin' remote exists
+    const remotes = await git.getRemotes();
+    if (!remotes.find((r) => r.name === "origin")) {
       await git.remote(["add", "origin", repoUrl]);
       vscode.window.showInformationMessage(
         `✅ Remote 'origin' added: ${repoUrl}`
       );
-    }
-      // Check if branch exists
-      const branchSummary = await git.branchLocal();
-      if (branchSummary.all.includes(branchName)) {
-        await git.checkout(branchName);
-      } else {
-        await git.checkoutLocalBranch(branchName);
-      }
-  
-      // Add and commit changes
-      await git.add(".");
-      await git.commit(`Initial commit for branch: ${branchName}`);
-      
-
-      // Push to remote
-      await git.push(["-u", "origin", branchName]);
-  
+    } else {
+      await git.remote(["set-url", "origin", repoUrl]);
       vscode.window.showInformationMessage(
-        `🌳 Branch '${branchName}' added and pushed to Daily Work repo.`
-      );
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `❌ Error creating branch: ${error.message}`
+        `🔄 Remote URL updated to: ${repoUrl}`
       );
     }
+
+    // Push to remote
+    await git.push(["-u", "origin", "main"]);
+
+    vscode.window.showInformationMessage(
+      "✅ Repository initialized and pushed to GitHub."
+    );
+    
+    return repoName;
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      `❌ Error initializing repository: ${error.message}`
+    );
+    return null;
+  }
+}
+
+async function addBranch() {
+  const workspaceFolder = vscode.workspace.workspaceFolders
+    ? vscode.workspace.workspaceFolders[0].uri.fsPath
+    : null;
+
+  if (!workspaceFolder) {
+    vscode.window.showErrorMessage("No folder is opened in the workspace.");
+    return;
+  }
+
+  // Get folder path
+  const folderPath = await vscode.window.showOpenDialog({
+    canSelectFiles: false,
+    canSelectFolders: true,
+    canSelectMany: false,
+    openLabel: "Select Folder to Create Branch"
+  });
+
+  if (!folderPath || folderPath.length === 0) {
+    vscode.window.showErrorMessage("No folder selected.");
+    return;
+  }
+
+  const selectedFolderPath = folderPath[0].fsPath;
+  const folderName = path.basename(selectedFolderPath);
+  
+  // Sanitize branch name
+  const branchName = sanitizeBranchName(folderName);
+  
+  // Get repository name
+  const repoName = await vscode.window.showInputBox({
+    prompt: "Enter the name of your GitHub repository",
+    placeHolder: "my-repo",
+    value: "DailyWork" // Default value
+  });
+
+  if (!repoName) {
+    vscode.window.showErrorMessage("Branch creation cancelled.");
+    return;
+  }
+
+  try {
+    const simpleGit = await loadSimpleGit();
+    
+    // Create a temporary directory for this operation
+    const tempDir = path.join(os.tmpdir(), `git_branch_${Date.now()}`);
+    await fs.promises.mkdir(tempDir, { recursive: true });
+    
+    const git = simpleGit(tempDir);
+    
+    // Clone repository
+    const repoUrl = `https://github.com/${gitHubUsername}/${repoName}.git`;
+    await git.clone(repoUrl, tempDir);
+    
+    // Create a new branch
+    await git.checkoutLocalBranch(branchName);
+    
+    // Remove all files from the branch
+    const files = await fs.promises.readdir(tempDir);
+    for (const file of files) {
+      if (file !== '.git') {
+        const filePath = path.join(tempDir, file);
+        const stat = await fs.promises.stat(filePath);
+        
+        if (stat.isDirectory()) {
+          await fs.promises.rm(filePath, { recursive: true, force: true });
+        } else {
+          await fs.promises.unlink(filePath);
+        }
+      }
+    }
+    
+    // Copy selected folder contents to the temp directory
+    await copyFolderRecursive(selectedFolderPath, tempDir);
+    
+    // Add and commit changes
+    await git.add(".");
+    await git.commit(`Initial commit for branch: ${branchName}`);
+    
+    // Push the branch to remote
+    await git.push(["-u", "origin", branchName]);
+    
+    // Clean up temp directory
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
+    
+    vscode.window.showInformationMessage(
+      `🌳 Branch '${branchName}' created from folder '${folderName}' and pushed to '${repoName}' repository.`
+    );
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      `❌ Error creating branch: ${error.message}`
+    );
+  }
+}
+
+async function copyFolderRecursive(src, dest) {
+  const entries = await fs.promises.readdir(src, { withFileTypes: true });
+  
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    
+    if (entry.isDirectory()) {
+      await fs.promises.mkdir(destPath, { recursive: true });
+      await copyFolderRecursive(srcPath, destPath);
+    } else {
+      await fs.promises.copyFile(srcPath, destPath);
+    }
+  }
+}
+
+async function initRepoWithBranches() {
+  // First authenticate if not already authenticated
+  if (!octokit) {
+    vscode.window.showInformationMessage("Please authenticate with GitHub first.");
+    await authenticate();
+    return;
   }
   
-  // Helper function to sanitize branch name
-  function sanitizeBranchName(branchName) {
-    return branchName
-      .replace(/[^a-zA-Z0-9_.-]/g, "-") // Replace invalid characters
-      .replace(/^-+|-+$/g, ""); // Remove trailing dashes
+  // Initialize the repository
+  const repoName = await initRepo();
+  
+  if (!repoName) {
+    vscode.window.showErrorMessage("Failed to initialize repository.");
+    return;
   }
+  
+  // Ask user if they want to add branches now
+  const addBranchesNow = await vscode.window.showQuickPick(['Yes', 'No'], {
+    placeHolder: 'Do you want to add branches now?'
+  });
+  
+  if (addBranchesNow === 'Yes') {
+    // Show folder selection dialog for each branch
+    const folderCount = await vscode.window.showInputBox({
+      prompt: "How many folders/branches do you want to add?",
+      placeHolder: "Enter a number",
+      value: "3"
+    });
+    
+    const count = parseInt(folderCount || "0", 10);
+    
+    if (count > 0) {
+      vscode.window.showInformationMessage(`Select ${count} folders to add as branches.`);
+      
+      for (let i = 0; i < count; i++) {
+        vscode.window.showInformationMessage(`Select folder ${i + 1} of ${count}`);
+        await addBranch();
+      }
+    }
+  }
+}
+
+// Helper function to sanitize branch name
+function sanitizeBranchName(branchName) {
+  return branchName
+    .replace(/[^a-zA-Z0-9_.-]/g, "-") // Replace invalid characters
+    .replace(/^-+|-+$/g, ""); // Remove trailing dashes
+}
+
+
 
 // Extension activation
 function activate(context) {
@@ -324,6 +456,9 @@ function activate(context) {
   );
   context.subscriptions.push(
     vscode.commands.registerCommand("gitbolt.addBranch", addBranch)
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("gitbolt.initRepoWithBranches", initRepoWithBranches)
   );
 
   vscode.window.showInformationMessage("GitBolt extension activated!");
